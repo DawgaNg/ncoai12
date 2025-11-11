@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Không ai hỏi, nhưng tao vẫn viết — Journal</title>
+  <style>
+    :root{
+      --bg:#0b0c0f; --panel:#0f1113; --muted:#9aa0a6; --accent:#8b5cf6; --danger:#ef4444;
+      --glass: rgba(255,255,255,0.03);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#080809);color:#e6e6e6}
+    .wrap{max-width:900px;margin:28px auto;padding:22px}
+
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .brand{display:flex;align-items:baseline;gap:12px}
+    .logo{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,#111216, #201a2b);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent);box-shadow:0 6px 20px rgba(0,0,0,0.6)}
+    h1{font-size:18px;margin:0}
+    p.tag{margin:0;color:var(--muted);font-size:13px}
+
+    .editor{margin-top:18px;background:var(--panel);padding:14px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.6)}
+    textarea{width:100%;min-height:120px;background:transparent;border:1px dashed rgba(255,255,255,0.04);padding:12px;border-radius:8px;color:inherit;font-size:15px;resize:vertical}
+    .row{display:flex;gap:8px;margin-top:10px;align-items:center}
+    button{background:linear-gradient(90deg,var(--accent),#5eead4);border:none;padding:10px 14px;border-radius:8px;font-weight:600;cursor:pointer}
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:13px;padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);cursor:pointer}
+
+    .list{margin-top:22px}
+    .post{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:12px;border-radius:10px;margin-bottom:12px;display:flex;gap:12px;align-items:flex-start}
+    .meta{min-width:160px;color:var(--muted);font-size:13px}
+    .content{white-space:pre-wrap;line-height:1.5}
+    .title{font-weight:700;margin-bottom:6px}
+
+    .actions{margin-left:auto;display:flex;gap:6px}
+    .ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:var(--muted);cursor:pointer}
+    .danger{background:var(--danger);border:none;padding:8px;border-radius:8px;cursor:pointer}
+
+    .toolbar{display:flex;gap:8px;align-items:center}
+    .search{padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
+
+    footer{margin-top:20px;color:var(--muted);font-size:13px;text-align:center}
+
+    @media (max-width:640px){.meta{display:none}.brand{gap:8px}.logo{width:44px;height:44px}}
+
+    /* subtle focus styles */
+    textarea:focus,button:focus,.small:focus{outline:2px solid rgba(139,92,246,0.12);outline-offset:2px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="logo">Ai</div>
+        <div>
+          <h1>Không ai hỏi, nhưng tao vẫn viết.</h1>
+          <p class="tag">Dán, lưu, quên. Mọi thứ ở đây — riêng tư trên trình duyệt.</p>
+        </div>
+      </div>
+      <div class="toolbar">
+        <input id="search" class="search" placeholder="Tìm..." />
+        <button id="export" class="small">Export</button>
+        <button id="importBtn" class="small">Import</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
+      </div>
+    </header>
+
+    <section class="editor">
+      <textarea id="editor" placeholder="Dán đoạn văn vào đây. Dòng đầu sẽ là tiêu đề (nếu có)."></textarea>
+      <div class="row">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="saveBtn">Lưu</button>
+          <button id="clearBtn" class="small">Xoá khung</button>
+          <div class="muted">Nhấn Ctrl+Enter để lưu nhanh.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="list" id="list"></section>
+
+    <footer>Được lưu cục bộ trong trình duyệt. Không cần tài khoản. Xóa trình duyệt = mất dữ liệu.</footer>
+  </div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'aiHoiPosts_v1';
+  const editor = document.getElementById('editor');
+  const saveBtn = document.getElementById('saveBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const listEl = document.getElementById('list');
+  const search = document.getElementById('search');
+  const exportBtn = document.getElementById('export');
+  const importBtn = document.getElementById('importBtn');
+  const importFile = document.getElementById('importFile');
+
+  let posts = load();
+  renderList(posts);
+
+  saveBtn.addEventListener('click', onSave);
+  clearBtn.addEventListener('click', ()=>editor.value='');
+  exportBtn.addEventListener('click', onExport);
+  importBtn.addEventListener('click', ()=>importFile.click());
+  importFile.addEventListener('change', onImportFile);
+
+  search.addEventListener('input', ()=>{
+    const q = search.value.trim().toLowerCase();
+    if(!q) return renderList(posts);
+    const filtered = posts.filter(p => (p.title||'').toLowerCase().includes(q) || p.content.toLowerCase().includes(q));
+    renderList(filtered);
+  });
+
+  document.addEventListener('keydown', (e)=>{
+    if(e.ctrlKey && e.key === 'Enter') onSave();
+  });
+
+  function onSave(){
+    const txt = editor.value.trim();
+    if(!txt) return flash("Không có gì để lưu.");
+    const title = firstLine(txt) || summary(txt);
+    const post = {id: Date.now().toString(), title, content: txt, createdAt: new Date().toISOString()};
+    posts.unshift(post);
+    save(posts);
+    renderList(posts);
+    editor.value = '';
+    flash('Đã lưu.');
+  }
+
+  function renderList(items){
+    listEl.innerHTML = '';
+    if(!items.length){ listEl.innerHTML = '<div class="muted" style="padding:18px;background:var(--glass);border-radius:10px">Chưa có gì. Dán vài dòng rồi lưu.</div>'; return }
+    items.forEach(p => listEl.appendChild(postNode(p)));
+  }
+
+  function postNode(p){
+    const el = document.createElement('div'); el.className='post';
+    const meta = document.createElement('div'); meta.className='meta';
+    meta.innerHTML = `<div style="font-weight:700">${escapeHtml(p.title||'—')}</div><div style="margin-top:8px">${formatDate(p.createdAt)}</div>`;
+    const content = document.createElement('div'); content.className='content'; content.innerHTML = escapeHtml(p.content);
+
+    const actions = document.createElement('div'); actions.className='actions';
+    const edit = document.createElement('button'); edit.className='ghost'; edit.textContent='Sửa';
+    edit.onclick = ()=>{ editor.value = p.content; window.scrollTo({top:0,behavior:'smooth'}); };
+
+    const copy = document.createElement('button'); copy.className='ghost'; copy.textContent='Copy';
+    copy.onclick = ()=>{ navigator.clipboard.writeText(p.content).then(()=>flash('Đã copy')); };
+
+    const del = document.createElement('button'); del.className='danger'; del.textContent='Xoá';
+    del.onclick = ()=>{
+      if(!confirm('Xoá vĩnh viễn?')) return; posts = posts.filter(x=>x.id!==p.id); save(posts); renderList(posts); flash('Đã xoá');
+    };
+
+    actions.appendChild(edit); actions.appendChild(copy); actions.appendChild(del);
+
+    el.appendChild(meta);
+    el.appendChild(content);
+    el.appendChild(actions);
+    return el;
+  }
+
+  function save(data){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){ alert('Không thể lưu: ' + e.message); }
+  }
+  function load(){
+    try{ const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : []; }catch(e){ return []; }
+  }
+
+  function formatDate(iso){ const d = new Date(iso); return d.toLocaleString(); }
+  function firstLine(text){ const m = text.split(/\r?\n/).find(l=>l.trim().length>0); return m? truncate(m,60):'' }
+  function summary(text){ return truncate(text.replace(/\n/g,' ').slice(0,80),60) }
+  function truncate(s,n){ return s.length>n? s.slice(0,n-1)+'…':s }
+
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+
+  function flash(msg){
+    const t = document.createElement('div'); t.textContent = msg; t.style.position='fixed'; t.style.right='18px'; t.style.bottom='18px'; t.style.background='rgba(0,0,0,0.6)'; t.style.padding='10px 14px'; t.style.borderRadius='8px'; t.style.boxShadow='0 8px 20px rgba(0,0,0,0.6)'; t.style.zIndex=9999; document.body.appendChild(t);
+    setTimeout(()=>{ t.style.transition='opacity .3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); },1200);
+  }
+
+  function onExport(){
+    const data = JSON.stringify(posts, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'aiHoi_export_'+(new Date().toISOString().slice(0,10))+'.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  function onImportFile(e){
+    const f = e.target.files[0]; if(!f) return; const reader = new FileReader(); reader.onload = ()=>{
+      try{ const data = JSON.parse(reader.result); if(!Array.isArray(data)) throw 0; posts = data.concat(posts); save(posts); renderList(posts); flash('Imported'); }catch(err){ alert('File không hợp lệ.'); }
+    }; reader.readAsText(f);
+    importFile.value='';
+  }
+
+})();
+</script>
+</body>
+</html>
